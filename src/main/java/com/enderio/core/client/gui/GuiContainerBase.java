@@ -33,6 +33,7 @@ import com.enderio.core.client.gui.widget.GuiToolTip;
 import com.enderio.core.client.gui.widget.TextFieldEnder;
 import com.enderio.core.client.gui.widget.VScrollbar;
 import com.enderio.core.client.render.RenderUtil;
+import com.enderio.core.common.util.ItemUtil;
 import com.google.common.collect.Lists;
 
 import cpw.mods.fml.common.Optional;
@@ -201,9 +202,80 @@ public abstract class GuiContainerBase extends GuiContainer implements ToolTipRe
     return ghostSlots;
   }
 
+  /**
+   * Called when a ghost slot is clicked or mouse wheeled.
+   * 
+   * @param slot
+   *          The GhostSlot
+   * @param x
+   *          Mouse position x
+   * @param y
+   *          Mouse position y
+   * @param button
+   *          The button used (0=left, 1=right). The mouse wheel is mapped to
+   *          -1=down and -2=up.
+   */
   protected void ghostSlotClicked(GhostSlot slot, int x, int y, int button) {
-    ItemStack st = Minecraft.getMinecraft().thePlayer.inventory.getItemStack();
-    slot.putStack(st);
+    ItemStack handStack = Minecraft.getMinecraft().thePlayer.inventory.getItemStack();
+    ItemStack existingStack = slot.getStack();
+    if (button == 0) { // left
+      if (handStack == null || handStack.getItem() == null || handStack.stackSize == 0) { // empty hand
+        slot.putStack(null);
+      } else { // item in hand
+        if (existingStack == null || existingStack.getItem() == null || existingStack.stackSize == 0) { // empty slot
+          slot.putStack(handStack);
+        } else { // filled slot
+          if (ItemUtil.areStackMergable(existingStack, handStack)) { // same item
+            if (existingStack.stackSize < existingStack.getMaxStackSize() && existingStack.stackSize < slot.getStackSizeLimit()) {
+              existingStack.stackSize++;
+              slot.putStack(existingStack);
+            } else {
+              // NOP
+            }
+          } else { // different item
+            slot.putStack(handStack);
+          }
+        }
+      }
+    } else if (button == 1) { // right
+      if (handStack == null || handStack.getItem() == null || handStack.stackSize == 0) { // empty hand
+        slot.putStack(null);
+      } else { // item in hand
+        if (existingStack == null || existingStack.getItem() == null || existingStack.stackSize == 0) { // empty slot
+          ItemStack oneItem = handStack.copy();
+          oneItem.stackSize = 1;
+          slot.putStack(oneItem);
+        } else { // filled slot
+          if (ItemUtil.areStackMergable(existingStack, handStack)) { // same item
+            if (existingStack.stackSize > 1) {
+              existingStack.stackSize--;
+              slot.putStack(existingStack);
+            } else {
+              slot.putStack(null);
+            }
+          } else { // different item
+            ItemStack oneItem = handStack.copy();
+            oneItem.stackSize = 1;
+            slot.putStack(oneItem);
+          }
+        }
+      }
+    } else if (button == -2) { // wheel up
+      if (existingStack != null && existingStack.getItem() != null && existingStack.stackSize > 0 && existingStack.stackSize < existingStack.getMaxStackSize()
+          && existingStack.stackSize < slot.getStackSizeLimit()) {
+        existingStack.stackSize++;
+        slot.putStack(existingStack);
+      }
+    } else if (button == -1) { // wheel down
+      if (existingStack != null && existingStack.getItem() != null) {
+        if (existingStack.stackSize > 1) {
+          existingStack.stackSize--;
+          slot.putStack(existingStack);
+        } else {
+          slot.putStack(null);
+        }
+      }
+    }
   }
 
   @Override
@@ -275,6 +347,12 @@ public abstract class GuiContainerBase extends GuiContainer implements ToolTipRe
     if (!scrollbars.isEmpty()) {
       for (VScrollbar vs : scrollbars) {
         vs.mouseWheel(x, y, delta);
+      }
+    }
+    if (!ghostSlots.isEmpty()) {
+      GhostSlot slot = getGhostSlot(x, y);
+      if (slot != null) {
+        ghostSlotClicked(slot, x, y, delta < 0 ? -1 : -2);
       }
     }
   }
@@ -394,6 +472,10 @@ public abstract class GuiContainerBase extends GuiContainer implements ToolTipRe
     itemRender.renderItemAndEffectIntoGUI(fontRendererObj, mc.renderEngine, stack, x, y);
   }
 
+  protected void drawFakeItemStackStdOverlay(int x, int y, ItemStack stack) {
+    itemRender.renderItemOverlayIntoGUI(fontRendererObj, mc.renderEngine, stack, x, y, null);
+  }
+
   protected void drawFakeItemHover(int x, int y) {
     GL11.glDisable(GL11.GL_LIGHTING);
     GL11.glDisable(GL11.GL_DEPTH_TEST);
@@ -417,6 +499,38 @@ public abstract class GuiContainerBase extends GuiContainer implements ToolTipRe
     }
   }
 
+  /**
+   * Override this to allow GhostSlots to gray out with a custom background. Not
+   * needed if the slot has the default "Minecraft-gray" background---but it may
+   * be nicer to texture pack creators.
+   */
+  protected String getGuiTexture() {
+    return null;
+  }
+
+  /**
+   * Gray out the item that was just painted into a GhostSlot by overpainting it
+   * with 50% transparent background. This gives the illusion that the item was
+   * painted with 50% transparency. (100%*a ° 100%*b ° 50%*a == 100%*a ° 50%*b)
+   */
+  protected void drawGhostSlotGrayout(GhostSlot slot) {
+    GL11.glDisable(GL11.GL_LIGHTING);
+    GL11.glDisable(GL11.GL_DEPTH_TEST);
+    GL11.glEnable(GL11.GL_BLEND);
+    GL11.glColor4f(1.0F, 1.0F, 1.0F, 0.5F);
+    String guiTexture = getGuiTexture();
+    if (guiTexture == null) {
+      RenderUtil.bindTexture("textures/gui/widgets.png");
+      drawTexturedModalRect(getGuiLeft() + slot.x, getGuiTop() + slot.y, 224, 352, 16, 16);
+    } else {
+      RenderUtil.bindTexture(guiTexture);
+      drawTexturedModalRect(getGuiLeft() + slot.x, getGuiTop() + slot.y, slot.x, slot.y, 16, 16);
+    }
+    GL11.glDisable(GL11.GL_BLEND);
+    GL11.glEnable(GL11.GL_DEPTH_TEST);
+    GL11.glEnable(GL11.GL_LIGHTING);
+  }
+
   protected void drawGhostSlots(int mouseX, int mouseY) {
     if (ghostSlots.isEmpty()) {
       return;
@@ -431,6 +545,12 @@ public abstract class GuiContainerBase extends GuiContainer implements ToolTipRe
         if (slot.isVisible()) {
           if (stack != null) {
             drawFakeItemStack(slot.x + sx, slot.y + sy, stack);
+            if (slot.shallDisplayStdOverlay()) {
+              drawFakeItemStackStdOverlay(slot.x + sx, slot.y + sy, stack);
+            }
+            if (slot.shallGrayOut()) {
+              drawGhostSlotGrayout(slot);
+            }
           }
           if (slot.isMouseOver(mouseX - sx, mouseY - sy)) {
             hoverGhostSlot = slot;
