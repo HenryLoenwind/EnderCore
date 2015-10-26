@@ -1,7 +1,5 @@
 package com.enderio.core.client.gui;
 
-import static com.enderio.core.client.render.EnderWidget.NEUTRAL_SLOT_BACKGROUND;
-
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -36,7 +34,6 @@ import com.enderio.core.client.gui.widget.TextFieldEnder;
 import com.enderio.core.client.gui.widget.VScrollbar;
 import com.enderio.core.client.render.EnderWidget;
 import com.enderio.core.client.render.RenderUtil;
-import com.enderio.core.common.util.ItemUtil;
 import com.google.common.collect.Lists;
 
 import cpw.mods.fml.common.Optional;
@@ -48,9 +45,13 @@ public abstract class GuiContainerBase extends GuiContainer implements ToolTipRe
   protected List<IGuiOverlay> overlays = Lists.newArrayList();
   protected List<TextFieldEnder> textFields = Lists.newArrayList();
   protected List<VScrollbar> scrollbars = Lists.newArrayList();
-  protected List<GhostSlot> ghostSlots = Lists.newArrayList();
+  protected GhostSlotHandler ghostSlotHandler = new GhostSlotHandler();
 
+  @Deprecated
+  protected List<GhostSlot> ghostSlots = ghostSlotHandler.getGhostSlots();
+  @Deprecated
   protected GhostSlot hoverGhostSlot;
+
   protected VScrollbar draggingScrollbar;
 
   protected GuiContainerBase(Container par1Container) {
@@ -202,95 +203,12 @@ public abstract class GuiContainerBase extends GuiContainer implements ToolTipRe
 
   @Override
   public List<GhostSlot> getGhostSlots() {
-    return ghostSlots;
+    return ghostSlotHandler.getGhostSlots();
   }
 
-  /**
-   * Called when a ghost slot is clicked or mouse wheeled.
-   * 
-   * @param slot
-   *          The GhostSlot
-   * @param x
-   *          Mouse position x
-   * @param y
-   *          Mouse position y
-   * @param button
-   *          The button used (0=left, 1=right). The mouse wheel is mapped to
-   *          -1=down and -2=up.
-   */
+  @Deprecated
   protected void ghostSlotClicked(GhostSlot slot, int x, int y, int button) {
-    ItemStack handStack = Minecraft.getMinecraft().thePlayer.inventory.getItemStack();
-    ItemStack existingStack = slot.getStack();
-    if (button == 0) { // left
-      if (handStack == null || handStack.getItem() == null || handStack.stackSize == 0) { // empty hand
-        slot.putStack(null);
-      } else { // item in hand
-        if (existingStack == null || existingStack.getItem() == null || existingStack.stackSize == 0) { // empty slot
-          if (handStack.stackSize <= slot.getStackSizeLimit()) {
-            slot.putStack(handStack);
-          } else {
-            ItemStack tmp = handStack.copy();
-            tmp.stackSize = slot.getStackSizeLimit();
-            slot.putStack(tmp);
-          }
-        } else { // filled slot
-          if (ItemUtil.areStackMergable(existingStack, handStack)) { // same item
-            if (existingStack.stackSize < existingStack.getMaxStackSize() && existingStack.stackSize < slot.getStackSizeLimit()) {
-              existingStack.stackSize++;
-              slot.putStack(existingStack);
-            } else {
-              // NOP
-            }
-          } else { // different item
-            if (handStack.stackSize <= slot.getStackSizeLimit()) {
-              slot.putStack(handStack);
-            } else {
-              ItemStack tmp = handStack.copy();
-              tmp.stackSize = slot.getStackSizeLimit();
-              slot.putStack(tmp);
-            }
-          }
-        }
-      }
-    } else if (button == 1) { // right
-      if (handStack == null || handStack.getItem() == null || handStack.stackSize == 0) { // empty hand
-        slot.putStack(null);
-      } else { // item in hand
-        if (existingStack == null || existingStack.getItem() == null || existingStack.stackSize == 0) { // empty slot
-          ItemStack oneItem = handStack.copy();
-          oneItem.stackSize = 1;
-          slot.putStack(oneItem);
-        } else { // filled slot
-          if (ItemUtil.areStackMergable(existingStack, handStack)) { // same item
-            if (existingStack.stackSize > 1) {
-              existingStack.stackSize--;
-              slot.putStack(existingStack);
-            } else {
-              slot.putStack(null);
-            }
-          } else { // different item
-            ItemStack oneItem = handStack.copy();
-            oneItem.stackSize = 1;
-            slot.putStack(oneItem);
-          }
-        }
-      }
-    } else if (button == -2) { // wheel up
-      if (existingStack != null && existingStack.getItem() != null && existingStack.stackSize > 0 && existingStack.stackSize < existingStack.getMaxStackSize()
-          && existingStack.stackSize < slot.getStackSizeLimit()) {
-        existingStack.stackSize++;
-        slot.putStack(existingStack);
-      }
-    } else if (button == -1) { // wheel down
-      if (existingStack != null && existingStack.getItem() != null) {
-        if (existingStack.stackSize > 1) {
-          existingStack.stackSize--;
-          slot.putStack(existingStack);
-        } else {
-          slot.putStack(null);
-        }
-      }
-    }
+    ghostSlotHandler.ghostSlotClicked(this, slot, x, y, button);
   }
 
   @Override
@@ -310,7 +228,7 @@ public abstract class GuiContainerBase extends GuiContainer implements ToolTipRe
         }
       }
     }
-    if (!ghostSlots.isEmpty()) {
+    if (!ghostSlotHandler.getGhostSlots().isEmpty()) {
       GhostSlot slot = getGhostSlot(x, y);
       if (slot != null) {
         ghostSlotClicked(slot, x, y, button);
@@ -364,7 +282,7 @@ public abstract class GuiContainerBase extends GuiContainer implements ToolTipRe
         vs.mouseWheel(x, y, delta);
       }
     }
-    if (!ghostSlots.isEmpty()) {
+    if (!ghostSlotHandler.getGhostSlots().isEmpty()) {
       GhostSlot slot = getGhostSlot(x, y);
       if (slot != null) {
         ghostSlotClicked(slot, x, y, delta < 0 ? -1 : -2);
@@ -428,12 +346,13 @@ public abstract class GuiContainerBase extends GuiContainer implements ToolTipRe
         vs.drawScrollbar(mouseX, mouseY);
       }
     }
-    drawGhostSlots(mouseX, mouseY);
+    if (!ghostSlotHandler.getGhostSlots().isEmpty()) {
+      drawGhostSlots(mouseX, mouseY);
+    }
   }
 
   @Override
   public void drawScreen(int par1, int par2, float par3) {
-    hoverGhostSlot = null;
     int mx = realMx = par1;
     int my = realMy = par2;
     for (IGuiOverlay overlay : overlays) {
@@ -447,10 +366,7 @@ public abstract class GuiContainerBase extends GuiContainer implements ToolTipRe
     super.drawScreen(mx, my, par3);
 
     if (draggingScrollbar == null) {
-      if (hoverGhostSlot != null && mc.thePlayer.inventory.getItemStack() == null) {
-        drawGhostSlotTooltip(hoverGhostSlot, par1, par2);
-      }
-
+      ghostSlotHandler.drawGhostSlotToolTip(this, par1, par2);
       ttMan.drawTooltips(this, par1, par2);
     }
   }
@@ -507,11 +423,14 @@ public abstract class GuiContainerBase extends GuiContainer implements ToolTipRe
     zLevel = 0.0F;
   }
 
+  @Override
+  public void renderToolTip(ItemStack p_146285_1_, int p_146285_2_, int p_146285_3_) {
+    super.renderToolTip(p_146285_1_, p_146285_2_, p_146285_3_);
+  }
+
+  @Deprecated
   protected void drawGhostSlotTooltip(GhostSlot slot, int mouseX, int mouseY) {
-    ItemStack stack = slot.getStack();
-    if (stack != null) {
-      renderToolTip(stack, mouseX, mouseY);
-    }
+    ghostSlotHandler.drawGhostSlotTooltip(this, slot, mouseX, mouseY);
   }
 
   /**
@@ -523,72 +442,14 @@ public abstract class GuiContainerBase extends GuiContainer implements ToolTipRe
     return null;
   }
 
-  /**
-   * Gray out the item that was just painted into a GhostSlot by overpainting it
-   * with 50% transparent background. This gives the illusion that the item was
-   * painted with 50% transparency. (100%*a ° 100%*b ° 50%*a == 100%*a ° 50%*b)
-   */
-  protected void drawGhostSlotGrayout(GhostSlot slot) {
-    GL11.glDisable(GL11.GL_LIGHTING);
-    GL11.glDisable(GL11.GL_DEPTH_TEST);
-    GL11.glEnable(GL11.GL_BLEND);
-    GL11.glColor4f(1.0F, 1.0F, 1.0F, 0.5F);
-    String guiTexture = getGuiTexture();
-    if (guiTexture == null) {
-      NEUTRAL_SLOT_BACKGROUND.getMap().render(NEUTRAL_SLOT_BACKGROUND, getGuiLeft() + slot.x, getGuiTop() + slot.y, this.zLevel, true);
-    } else {
-      RenderUtil.bindTexture(guiTexture);
-      drawTexturedModalRect(getGuiLeft() + slot.x, getGuiTop() + slot.y, slot.x, slot.y, 16, 16);
-    }
-    GL11.glDisable(GL11.GL_BLEND);
-    GL11.glEnable(GL11.GL_DEPTH_TEST);
-    GL11.glEnable(GL11.GL_LIGHTING);
-  }
-
+  @Deprecated
   protected void drawGhostSlots(int mouseX, int mouseY) {
-    if (ghostSlots.isEmpty()) {
-      return;
-    }
-    int sx = getGuiLeft();
-    int sy = getGuiTop();
-    drawFakeItemsStart();
-    try {
-      hoverGhostSlot = null;
-      for (GhostSlot slot : ghostSlots) {
-        ItemStack stack = slot.getStack();
-        if (slot.isVisible()) {
-          if (stack != null) {
-            drawFakeItemStack(slot.x + sx, slot.y + sy, stack);
-            if (slot.shallDisplayStdOverlay()) {
-              drawFakeItemStackStdOverlay(slot.x + sx, slot.y + sy, stack);
-            }
-            if (slot.shallGrayOut()) {
-              drawGhostSlotGrayout(slot);
-            }
-          }
-          if (slot.isMouseOver(mouseX - sx, mouseY - sy)) {
-            hoverGhostSlot = slot;
-          }
-        }
-      }
-      if (hoverGhostSlot != null) {
-        // draw hover last to prevent it from affecting rendering of other slots ...
-        drawFakeItemHover(hoverGhostSlot.x + sx, hoverGhostSlot.y + sy);
-      }
-    } finally {
-      drawFakeItemsEnd();
-    }
+    ghostSlotHandler.drawGhostSlots(this, mouseX, mouseY);
   }
 
+  @Deprecated
   protected GhostSlot getGhostSlot(int mouseX, int mouseY) {
-    mouseX -= getGuiLeft();
-    mouseY -= getGuiTop();
-    for (GhostSlot slot : ghostSlots) {
-      if (slot.isVisible() && slot.isMouseOver(mouseX, mouseY)) {
-        return slot;
-      }
-    }
-    return null;
+    return ghostSlotHandler.getGhostSlot(this, mouseX, mouseY);
   }
 
   private boolean isMouseInOverlay(int mouseX, int mouseY, IGuiOverlay overlay) {
@@ -685,6 +546,10 @@ public abstract class GuiContainerBase extends GuiContainer implements ToolTipRe
       RenderHelper.enableStandardItemLighting();
       GL11.glEnable(GL12.GL_RESCALE_NORMAL);
     }
+  }
+
+  public float getZlevel() {
+    return zLevel;
   }
 
   @Override
