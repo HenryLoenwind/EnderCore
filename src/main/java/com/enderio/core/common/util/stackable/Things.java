@@ -272,13 +272,27 @@ public class Things {
   /**
    * Returns a list of objects that are suitable for use with Forge's oredict recipes.
    */
-  public NNList<Object> getRecipeObjects() {
+  public @Nonnull NNList<Object> getRecipeObjects() {
     NNList<Object> result = new NNList<Object>();
     for (IThing thing : things) {
       Object recipeObject = thing.getRecipeObject();
       if (recipeObject != null) {
         result.add(recipeObject);
       }
+    }
+    return result;
+  }
+
+  public @Nonnull NNList<ItemStack> getLeadItemStacks() {
+    NNList<ItemStack> result = new NNList<ItemStack>();
+    for (IThing thing : things) {
+      ItemStack leadItem = thing.getLeadItemStack();
+      if (!leadItem.isEmpty()) {
+        result.add(leadItem);
+      }
+    }
+    if (result.isEmpty()) {
+      result.add(ItemStack.EMPTY);
     }
     return result;
   }

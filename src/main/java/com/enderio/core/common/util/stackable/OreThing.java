@@ -1,5 +1,8 @@
 package com.enderio.core.common.util.stackable;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
@@ -96,6 +99,48 @@ class OreThing implements IThing {
   @Override
   public @Nullable Object getRecipeObject() {
     return name;
+  }
+
+  @Override
+  public @Nonnull ItemStack getLeadItemStack() {
+    return applyOverrides(name, IThing.super.getLeadItemStack());
+  }
+
+  //
+
+  private static final @Nonnull Map<String, Things> OVERRIDES = new HashMap<>();
+
+  public static void registerOverride(@Nonnull String name, @Nonnull Things override) {
+    if (OVERRIDES.containsKey(name)) {
+      OVERRIDES.get(name).add(override);
+    } else {
+      OVERRIDES.put(name, override);
+    }
+  }
+
+  public static @Nonnull ItemStack applyOverrides(@Nonnull String name, @Nonnull ItemStack fallback) {
+    if (OVERRIDES.containsKey(name)) {
+      Things override = OVERRIDES.get(name);
+      NNList<ItemStack> itemStacks = override.getItemStacks();
+      if (!itemStacks.isEmpty()) {
+        return itemStacks.get(0);
+      }
+    }
+    return fallback;
+  }
+
+  public static @Nonnull ItemStack applyOverrides(@Nonnull ItemStack stackIn) {
+    int[] oreIDs = OreDictionary.getOreIDs(stackIn);
+    if (oreIDs != null) {
+      for (int i = 0; i < oreIDs.length; i++) {
+        String name = OreDictionary.getOreName(oreIDs[i]);
+        ItemStack stack = applyOverrides(name, ItemStack.EMPTY);
+        if (!stack.isEmpty()) {
+          return stack;
+        }
+      }
+    }
+    return stackIn;
   }
 
 }

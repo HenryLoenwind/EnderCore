@@ -31,4 +31,16 @@ interface IThing {
 
   @Nullable
   Object getRecipeObject();
+
+  /**
+   * Returns the single stack that represents the whole Thing. Usually this will
+   * be the first stack in the stack list, with the exception of
+   * ore-dictionary-backed things, where this may be overridden by a a registered
+   * preference.
+   */
+  default @Nonnull ItemStack getLeadItemStack() {
+    NNList<ItemStack> itemStacks = getItemStacks();
+    return itemStacks.isEmpty() ? ItemStack.EMPTY : itemStacks.get(0);
+  }
+
 }
